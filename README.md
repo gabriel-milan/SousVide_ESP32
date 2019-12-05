@@ -44,4 +44,4 @@ For controlling the water temperature, I would set the desired temperature on th
 #### Monitoring and interface
 This was done only by the Blynk app, but the options were limited. I could see the temperature over time and the "flag" telling me to add hot water. An example screenshot of my first test is available below.
 
-![v0.jpeg](https://raw.githubusercontent.com/gabriel-milan/SousVide/master/img/v0.jpeg)
+![v0.jpeg](https://github.com/gabriel-milan/SousVide/blob/master/img/v0.jpeg)
