@@ -4,9 +4,9 @@
 #include <Arduino.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <BlynkSimpleEsp32.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
+#include <BlynkSimpleEsp32_BLE.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
 #include "credentials.h"
 #include "macros.h"
 
@@ -20,20 +20,46 @@ DallasTemperature sensors (&oneWire);
  *  Timers
  */
 BlynkTimer timerSend;
-BlynkTimer timerGets;
+BlynkTimer timerData;
+
+/*
+ *  Blynk LCD
+ */
+WidgetLCD lcd(V0);
 
 /*
  *  Globals
  */
-unsigned int targetTemp   = -1;
-unsigned int currentTemp  = -1;
-unsigned int addWater     =  0;
+unsigned int  targetTemp    = 0;
+unsigned int  currentTemp   = 0;
+unsigned int  heating       = 0;
+long          startTime     = 0;
+long          offsetTime    = 0;
+long          endingTime    = 0;
+bool          enable        = false;
 
 /*
  *  Method that sleeps using the vTaskDelay function
  */
 void sleep (int ms) {
   vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+/*
+ *  Script that makes the initialization
+ */
+void start () {
+  startTime = millis();
+  if (offsetTime != 0) {
+    endingTime = startTime + offsetTime;
+  }
+}
+
+/*
+ *  Script that stops the sous vide
+ */
+void stop () {
+  // TODO
 }
 
 /*
@@ -53,46 +79,102 @@ void getTempCelsius () {
 /*
  * Method that updates LED
  */
-void cmpTarget () {
-  if (currentTemp < targetTemp) {
-    addWater = 1023;
+void updateHeating () {
+  if (millis() >= endingTime) {
+    heating = 0;
   }
   else {
-    addWater = 0;
+    if (currentTemp < targetTemp) {
+      heating = 1023;
+    }
+    else {
+      heating = 0;
+    }
   }
 }
 
 /*
- *  Send methods for Blynk
+ *  Helper method that prints temperature into the LCD
  */
-void sendCurrentTemp () {
-  Blynk.virtualWrite(0, currentTemp);
-}
-void sendAddWater () {
-  Blynk.virtualWrite(2, addWater);
-}
-void sendEverything () {
-  sendCurrentTemp();
-  sendAddWater();
-}
-void getEverything () {
-  getTempCelsius();
-  cmpTarget();
+void printTemperature (unsigned int temp) {
+  lcd.print (0, 7, String(temp));
 }
 
 /*
- *  Blynk stuff
+ *  Helper method that prints the timer into the LCD
  */
-// Writing the current temperature into V0
-BLYNK_READ(V0) {
-  sendCurrentTemp();
+void printTimer (long start) {
+  long refTime;
+  if (start <= 0) {
+    refTime = 0;
+  }
+  else {
+    refTime = millis() - start;
+  }
+  float div_seconds = refTime / 1000.f;
+  int seconds = (int) div_seconds;
+  float div_minutes = seconds / 60.f;
+  int minutes = (int) div_minutes;
+  float div_hours = minutes / 60.f;
+  int hours = (int) div_hours;
+  lcd.print (1, 6, String(hours));
+  lcd.print (1, 9, String(minutes));
+  lcd.print (1, 12, String(seconds));
 }
-// Reading the target temperature from V1
-BLYNK_WRITE(V1) {
+
+/*
+ *  Methods for Blynk
+ */
+// V0 - LCD that shows current temperature and cooking time
+void sendLCD () {
+  printTemperature(currentTemp);
+  printTimer(startTime);
+}
+// V1 - LED that shows if heating is enabled
+void sendHeating () {
+  Blynk.virtualWrite(1, heating);
+}
+// Sending everything
+void sendEverything () {
+  sendLCD();
+  sendHeating();
+}
+// V2 - Time input that sends the desired cooking time
+BLYNK_WRITE(V2) {
+  TimeInputParam t(param);
+
+  if (t.hasStartTime()) {
+    offsetTime = 
+      t.getStartHour() * 3600 + 
+      t.getStartMinute() * 60 +
+      t.getStartSecond();
+    offsetTime *= 1000;
+  }
+
+  endingTime = startTime + offsetTime;
+}
+// V3 - Numeric input that sends the target temperature
+BLYNK_WRITE(V3) {
   targetTemp = param.asInt();
 }
-BLYNK_READ(V2) {
-  sendAddWater();
+// V4 - Styled button that enables or disables the sous vide
+BLYNK_WRITE(V4) {
+  bool prevEnable = enable;
+  enable = param.asInt();
+  if (enable && !prevEnable) {
+    start();
+  }
+  else if (!enable) {
+    stop();
+  }
+}
+
+/*
+ *  Method that updates internal things
+ */
+void updateData () {
+  getTempCelsius();
+  updateHeating();
 }
 
 /*
@@ -106,10 +188,16 @@ void setup() {
   // Initializing the sensor
   sensors.begin();
 
+  // Clear the LCD and print headers
+  lcd.clear();
+  lcd.print (0, 0, "Temp:  --.- ºC");
+  lcd.print (0, 1, "Time: --:--:--");
+
   // Initialize Blynk
-  Blynk.begin(token, ssid, password);
+  Blynk.setDeviceName("SousVide");
+  Blynk.begin(token);
   timerSend.setInterval(SEND_INTERVAL, sendEverything);
-  timerGets.setInterval(GETS_INTERVAL, getEverything);
+  timerData.setInterval(GETS_INTERVAL, updateData);
 
 }
 
@@ -119,14 +207,14 @@ void setup() {
 void loop() {
 
   timerSend.run();
-  timerGets.run();
+  timerData.run();
   Blynk.run();
 
-  Serial.print("Current temp: ");
-  Serial.print(currentTemp);
-  Serial.print("ºC / Target temp: ");
-  Serial.print(targetTemp);
-  Serial.print("ºC / AddWater: ");
-  Serial.println(addWater);
+  // Serial.print("Current temp: ");
+  // Serial.print(currentTemp);
+  // Serial.print("ºC / Target temp: ");
+  // Serial.print(targetTemp);
+  // Serial.print("ºC / Heating: ");
+  // Serial.println(heating);
 
 }
