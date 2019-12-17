@@ -1,23 +1,19 @@
 #ifndef MACROS_H
 #define MACROS_H
 
-// DS18B20
+// Pinout
 #define ONE_WIRE_BUS            4
-#define REQUEST_SLEEP_TIME      100
-
-// Water pump relay
+#define WATER_HEATING           22
 #define WATER_PUMP              23
 
 // Serial
 #define SERIAL_BAUD_RATE        115200
 
-// Blynk
-#define SEND_INTERVAL           1000L
-#define GETS_INTERVAL           1000L
-
 // Delays
-#define DELAY_CHECK_DATA        1000
-#define DELAY_ACT               10
+#define DELAY_UPDATE_LOCAL      10
+#define DELAY_UPDATE_BLYNK      10
+#define DELAY_ACTIONS           10
+#define REQUEST_SLEEP_TIME      100
 
 // Multi-core stuff
 #define STACK_SIZE_FLAGS_TASKS  10000
