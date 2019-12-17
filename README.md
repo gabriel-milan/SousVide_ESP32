@@ -45,3 +45,14 @@ For controlling the water temperature, I would set the desired temperature on th
 This was done only by the Blynk app, but the options were limited. I could see the temperature over time and the "flag" telling me to add hot water. An example screenshot of my first test is available below.
 
 ![v0.png](https://raw.githubusercontent.com/gabriel-milan/SousVide/master/img/v0.png)
+
+### Version 1
+This release, a work in progress, implements water heating and an underwater pump for water circulation.
+
+#### Cloning the Blynk app
+* Download Blynk App: http://j.mp/blynk_Android or http://j.mp/blynk_iOS
+* Touch the QR-code icon and point the camera to the code below
+
+![QR-Code](https://raw.githubusercontent.com/gabriel-milan/SousVide/master/img/clone.png)
+
+* That's it! You have the app!
