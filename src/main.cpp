@@ -2,30 +2,30 @@
  * DIY SousVide implementation
  * Author: Gabriel Gazola Milan
  * Git: https://github.com/gabriel-milan/SousVide
- * 
+ *
  * Inputs:
  * - DS18B20 temperature sensor (OneWire connection on Pin 4)
  * - Cooking time input (Virtual Pin 2)
  * - Desired cooking temperature (Virtual Pin 3)
  * - On/Off switch (Virtual Pin 4)
- * 
+ *
  * Outputs:
  * - Water heating (Digital Pin 22)
  * - Water pump (Digital Pin 23)
  * - LCD (Virtual Pin V0)
  * - Heating LED (Virtual Pin V1)
- * 
+ *
  * Tasks:
  * - TaskUpdateLocal (Core one)  -> Updates local inputs and globals
  * - TaskUpdateBlynk (Core zero) -> Updates Blynk app outputs (LCD / LED)
  * - TaskActions     (Core zero) -> Acts on the local outputs (Heating / Pump)
- * 
+ *
  * Control variables:
  * - enable       -> On/Off switch
  * - heating      -> Enables/disables heating
  * - waterPump    -> Enables/disables the water pump
  * - timeIsUp     -> Cooking is done
- * 
+ *
  * Globals:
  * - targetTemp   -> The target cooking temperature
  * - currentTemp  -> The current water temperature
@@ -34,7 +34,7 @@
  * - endingTime   -> Ending time (milliseconds)
  * - timeIsUp     -> Compares if currentTime is greater than the endingTime
  * - enable       -> Gets the Blynk switch state
- * 
+ *
  * Policy for the actions:
  * - heating:     If (targetTemp > currentTemp) and (NOT timeIsUp)
  * - waterPump:   If (enable) and (NOT timeIsUp)
@@ -46,12 +46,18 @@
 #include <Arduino.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BlynkSimpleEsp32_BT.h>
-// #include <BlynkSimpleEsp32_BLE.h>
 #include "credentials.h"
 #include "macros.h"
+
+// Wi-Fi option
+#include <BlynkSimpleEsp32.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+
+// // BLE option
+// #include <BlynkSimpleEsp32_BLE.h>
+// #include <BLEDevice.h>
+// #include <BLEServer.h>
 
 /*
  *  DS18B20 declaration
@@ -123,11 +129,11 @@ void updateHeating () {
 // V2 - Time input that sends the desired cooking time
 BLYNK_WRITE(V2) {
   TimeInputParam t(param);
-  long cookingTime;
+  long cookingTime = 0;
 
   if (t.hasStartTime()) {
-    cookingTime = 
-      t.getStartHour() * 3600 + 
+    cookingTime =
+      t.getStartHour() * 3600 +
       t.getStartMinute() * 60 +
       t.getStartSecond();
     cookingTime *= 1000;
@@ -182,7 +188,7 @@ void UpdateLocal (void *pvParameters) {
     endingTime = startTime + offsetTime;
 
     // timeIsUp
-    timeIsUp = (millis() - endingTime) > 0;
+    timeIsUp = millis() > endingTime;
 
     // Task delay
     sleep (DELAY_UPDATE_LOCAL);
@@ -198,20 +204,27 @@ void UpdateBlynk (void *pvParameters) {
   for (;;) {
 
     // Sets the Blynk LED
-    
+
 
     /*
     * Blynk outputs:
-    * - LCD (Virtual Pin V0)
+    * - Temperature (Virtual Pin V0)
     * - Heating LED (Virtual Pin V1)
+    * - Remaining time (Virtual Pin V5)
     */
+    // Temperature
+    Blynk.virtualWrite(0, currentTemp);
+
+    // Heating
     if (heating) {
       Blynk.virtualWrite(1, 1023);
     }
     else {
       Blynk.virtualWrite(1, 0);
     }
-    // updateLCD();
+
+    // Remaining time
+    Blynk.virtualWrite(5, (endingTime - millis()) / 60000);
 
     // Task delay
     sleep (DELAY_UPDATE_BLYNK);
@@ -223,6 +236,9 @@ void UpdateBlynk (void *pvParameters) {
  */
 void Actions (void *pvParameters) {
 
+  unsigned int turnOnTemp;
+  unsigned int turnOffTemp;
+
   // Loop
   for (;;) {
 
@@ -231,15 +247,24 @@ void Actions (void *pvParameters) {
      * - heating:     If (targetTemp > currentTemp) and (NOT timeIsUp)
      * - waterPump:   If (enable) and (NOT timeIsUp)
     */
-    // Water pump
-    if ((targetTemp > currentTemp) && (!timeIsUp)) {
-      digitalWrite(WATER_HEATING, HIGH);
+    // Water heating
+    if ((!timeIsUp) && (enable)) {
+      // Rules
+      turnOnTemp = targetTemp - 1;
+      turnOffTemp = targetTemp + 1;
+      if ((currentTemp <= turnOnTemp) && (!heating)) {
+        heating = true;
+      }
+      else if ((currentTemp >= turnOffTemp) && (heating)) {
+        heating = false;
+      }
     }
     else {
-      digitalWrite(WATER_HEATING, LOW);
+      heating = false;
     }
+    digitalWrite(WATER_HEATING, heating);
 
-    // Heating
+    // Pump
     if ((enable) && (!timeIsUp)) {
       digitalWrite(WATER_PUMP, HIGH);
     }
@@ -264,11 +289,12 @@ void setup() {
   sensors.begin();
 
   // Initialize Blynk
-  Blynk.setDeviceName("SousVide");
-  Blynk.begin(token);
+  // Blynk.setDeviceName("SousVide");
+  Blynk.begin(token, ssid, password);
 
   // Initialize pins
   pinMode(WATER_PUMP, OUTPUT);
+  pinMode(WATER_HEATING, OUTPUT);
 
   xTaskCreatePinnedToCore(
                     UpdateLocal,       /* Task function. */
@@ -306,18 +332,51 @@ void setup() {
  *  Loop
  */
 void loop() {
+  // /*
+  //  *  Globals
+  //  */
+  // unsigned int  targetTemp    = 0;
+  // unsigned int  currentTemp   = 0;
+  // long          startTime     = 0;
+  // long          offsetTime    = 0;
+  // long          endingTime    = 0;
+  // bool          timeIsUp      = false;
+  // bool          enable        = false;
+  // bool          prevEnable    = false;
 
-  // Serial.print("Current temp: ");
-  // Serial.print(currentTemp);
-  // Serial.print("ºC / Target temp: ");
-  // Serial.print(targetTemp);
-  // Serial.print("ºC / Heating: ");
-  // Serial.print(heating);
-  // Serial.print(" / Water pump: ");
-  // Serial.print(enable);
-  // Serial.print(" / Millis: ");
-  // Serial.print(millis());
-  // Serial.print(" / EndingTime: ");
-  // Serial.println(endingTime);
+  // /*
+  //  *  Control variables
+  //  */
+  // bool          heating       = false;
+  // bool          waterPump     = false;
+
+  if (Blynk.connected()) {
+    Blynk.run();
+    Serial.print("Current temp: ");
+    Serial.print(currentTemp);
+    Serial.print("ºC / Target temp: ");
+    Serial.print(targetTemp);
+    Serial.print("ºC / Start time: ");
+    Serial.print(startTime);
+    Serial.print(" / Offset time: ");
+    Serial.print(offsetTime);
+    Serial.print(" / Ending time: ");
+    Serial.print(endingTime);
+    Serial.print(" / Time's up: ");
+    Serial.print(timeIsUp);
+    Serial.print(" / Enable: ");
+    Serial.print(enable);
+    Serial.print(" / PrevEnable: ");
+    Serial.print(prevEnable);
+    Serial.print(" / Water pump: ");
+    Serial.print(waterPump);
+    Serial.print(" / Heating: ");
+    Serial.print(heating);
+    Serial.print(" / Millis: ");
+    Serial.println(millis());
+  }
+  else {
+    Serial.println("Not connected!!!");
+  }
 
 }
