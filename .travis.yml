@@ -4,7 +4,7 @@ services:
   - docker
 
 before_install:
-  - docker pull espressif/idf:v3.2.4
+  - docker pull gabrielmilan/esp-idf:3.2.4
 
 script:
-  - docker run --rm -v $PWD:/project -w /project espressif/idf idf.py build
+  - docker run --rm -v $PWD:/project -w /project gabrielmilan/esp-idf:3.2.4 make
