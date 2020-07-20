@@ -1,0 +1,10 @@
+language: shell
+
+services:
+  - docker
+
+before_install:
+  - docker pull espressif/idf
+
+script:
+  - docker run --rm -v $PWD:/project -w /project espressif/idf make defconfig all -j4
