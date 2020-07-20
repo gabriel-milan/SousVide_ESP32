@@ -1,6 +1,8 @@
 # SousVide
 
+[![Platform: ESP-IDF](https://img.shields.io/badge/ESP--IDF-v3.2.4-blue.svg)](https://docs.espressif.com/projects/esp-idf/en/stable/get-started/)
 [![Build Status](https://travis-ci.com/gabriel-milan/SousVide_ESP32.svg?branch=master)](https://travis-ci.com/gabriel-milan/SousVide_ESP32)
+[![License](https://img.shields.io/github/license/gabriel-milan/SousVide_ESP32)](https://github.com/gabriel-milan/SousVide_ESP32/blob/master/LICENSE)
 
 ## What is sous-vide?
 
@@ -22,7 +24,31 @@ Anyway, **let's do it!**
 
 ## TL;DR - Just wanna make it work
 
-(TODO)
+### ESP32 build and flash
+
+* First of all, clone this repository
+
+```
+git clone https://github.com/gabriel-milan/SousVide_ESP32
+```
+
+* `cd` into the repository and then pull submodules
+
+```
+cd SousVide_ESP32/ && git submodule update --init --recursive
+```
+
+* Generate your `sdkconfig` file (won't upload mine for now). If you just want default configurations, run the following command, save and exit
+
+```
+make menuconfig
+```
+
+* Build it
+
+```
+make
+```
 
 ## Releases
 

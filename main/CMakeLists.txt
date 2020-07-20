@@ -1,2 +1,6 @@
-idf_component_register(SRCS "hello_world_main.c"
-                    INCLUDE_DIRS "")
+set(COMPONENT_SRCS "main.cpp")
+set(COMPONENT_ADD_INCLUDEDIRS ".")
+
+set(COMPONENT_REQUIRES soc nvs_flash)
+
+register_component()

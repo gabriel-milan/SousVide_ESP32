@@ -4,7 +4,7 @@ services:
   - docker
 
 before_install:
-  - docker pull espressif/idf
+  - docker pull espressif/idf:v3.2.4
 
 script:
-  - docker run --rm -v $PWD:/project -w /project espressif/idf make defconfig all -j4
+  - docker run --rm -v $PWD:/project -w /project espressif/idf idf.py build
