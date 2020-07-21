@@ -1,0 +1,10 @@
+linter:
+# https://help.sider.review/getting-started/custom-configuration
+
+  # https://help.sider.review/tools/cplusplus/cpplint
+  cpplint:
+    target: "main"
+    extensions: "c,cc,cpp,cxx"
+    headers: "h,hpp,hxx"
+    filter: "-whitespace,+whitespace/braces,-legal/copyright"
+    linelength: 100
