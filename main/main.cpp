@@ -355,10 +355,42 @@ void UpdateBleOutputs (void *pvParameters) {
  */
 void Actions (void *pvParameters) {
   
+  unsigned int turnOnTemp;
+  unsigned int turnOffTemp;
+  bool timeIsUp = true;
+
   // Task loop
   for (;;) {
 
-    // TODO: Implement this
+    /*
+     * Policy for the actions:
+     * - heating:     If (targetTemp > currentTemp) and (NOT timeIsUp)
+     * - waterPump:   If (enable) and (NOT timeIsUp)
+    */
+    // Water heating
+    if ((!timeIsUp) && (enabled)) {
+      // Rules
+      turnOnTemp = targetTemp - 1;
+      turnOffTemp = targetTemp + 1;
+      if ((currentTemp <= turnOnTemp) && (!heating)) {
+        heating = true;
+      }
+      else if ((currentTemp >= turnOffTemp) && (heating)) {
+        heating = false;
+      }
+    }
+    else {
+      heating = false;
+    }
+    digitalWrite(WATER_HEATING, heating);
+
+    // Pump
+    if ((enabled) && (!timeIsUp)) {
+      digitalWrite(WATER_PUMP, HIGH);
+    }
+    else {
+      digitalWrite(WATER_PUMP, LOW);
+    }
 
     // Task delay
     sleep(DELAY_TASK_ACTIONS);
