@@ -26,11 +26,12 @@
 #define NO_PARAMETERS                     NULL
 // Tasks delays
 #define DELAY_TASK_DEFAULT                10
-#define DELAY_TASK_UPDATE_CURR_TEMP       500
-#define DELAY_TASK_UPDATE_PASSED_TIME     5000
-#define DELAY_TASK_UPDATE_BLE_INPUTS      5000
-#define DELAY_TASK_UPDATE_BLE_OUTPUTS     1000
-#define DELAY_TASK_ACTIONS                DELAY_TASK_DEFAULT
+#define DELAY_TASK_UPDATE_CURR            500                 // Core #0
+#define DELAY_TASK_UPDATE_ROM             5000                // Core #1
+#define DELAY_TASK_UPDATE_PASSED_TIME     5000                // Core #1
+#define DELAY_TASK_UPDATE_BLE_INPUTS      5000                // Core #1
+#define DELAY_TASK_UPDATE_BLE_OUTPUTS     1000                // Core #0
+#define DELAY_TASK_ACTIONS                DELAY_TASK_DEFAULT  // Core #0
 // EEPROM stuff
 #define EEPROM_SIZE                       512
 #define EEPROM_INITIALIZED_VAL            43 // Arbitrary value
@@ -39,6 +40,9 @@
 #define EEPROM_ADDRESS_PASSED_TIME        5
 #define EEPROM_ADDRESS_DESIRED_TIME       9
 #define EEPROM_ADDRESS_DESIRED_TEMP       13
+#define EEPROM_ADDRESS_NEXT               17
+// Defaults
+#define DEFAULT_VALUE                     0
 // Temperature sensor
 #define REQUEST_SLEEP_TIME                100
 

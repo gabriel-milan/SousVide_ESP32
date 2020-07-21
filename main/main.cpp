@@ -25,6 +25,9 @@
 #include "esp_system.h"
 #include "esp_spi_flash.h"
 #include "nvs_flash.h"
+// Setting time
+#include "time.h"
+#include "sys/time.h"
 // Custom macros
 #include "include/SousVide.h"
 // Arduino libraries
@@ -34,15 +37,34 @@
 /*
  *  Globals
  */
-float currentTemp = -127;
+// Temperature
+unsigned int currentTemp    = DEFAULT_VALUE;
+unsigned int targetTemp     = DEFAULT_VALUE;
+// Cooking time
+unsigned int  currentTime   = DEFAULT_VALUE;
+unsigned int  targetTime    = DEFAULT_VALUE;
+// Clock
+unsigned int  mClock         = DEFAULT_VALUE;
+// Enable
+bool enabled                = DEFAULT_VALUE;
+// Control
+bool heating                = false;
+bool pump                   = false;
+bool reachedTemperature     = false;
+bool timeSet                = false;
+unsigned int  startTime     = DEFAULT_VALUE;
 
 /*
  *  Tasks
  */
-TaskHandle_t TaskUpdateCurrentTemp;
-TaskHandle_t TaskUpdatePassedTime;
+// Update globals
+TaskHandle_t TaskUpdateCurrent;
+// Update ROM
+TaskHandle_t TaskUpdateRom;
+// Update BLE
 TaskHandle_t TaskUpdateBleInputs;
 TaskHandle_t TaskUpdateBleOutputs;
+// Take actions
 TaskHandle_t TaskActions;
 
 /*
@@ -95,6 +117,41 @@ void EEPROM_Write (int address, byte value) {
  */
 byte EEPROM_Read (int address) {
   return EEPROM.read(address);
+}
+
+/*
+ *  Method for resetting the EEPROM
+ */
+void resetEeprom () {
+  EEPROM_Write(EEPROM_ADDRESS_ZERO, (byte) EEPROM_INITIALIZED_VAL);
+  for (int address = EEPROM_ADDRESS_ZERO + 1; address < EEPROM_SIZE; address++) {
+    EEPROM_Write(address, (byte) 0);
+  }
+}
+
+/*
+ *  Method for writing int  into EEPROM
+ */
+void EEPROM_Write_Int (int address, unsigned int  val) {
+  byte valBytes[4] = {0, 0, 0, 0};
+  valBytes [0] = (byte) ((val >> 24) & 0xFF);
+  valBytes [1] = (byte) ((val >> 16) & 0xFF);
+  valBytes [2] = (byte) ((val >>  8) & 0xFF);
+  valBytes [3] = (byte) ((val >>  0) & 0xFF);
+  for (byte i = 0; i < sizeof(unsigned int ); i++) {
+    EEPROM_Write(address + i, valBytes[i]);
+  }
+}
+
+/*
+ *  Method for reading int  from EEPROM
+ */
+unsigned int  EEPROM_Read_Int (int address) {
+  unsigned int  val = 0;
+  for (byte i = 0; i < sizeof(unsigned int ); i++) {
+    val = ((val << 8) + (EEPROM_Read(address + i) & 0xFF));
+  }
+  return val;
 }
 
 /*
@@ -152,16 +209,6 @@ void initBle () {
 }
 
 /*
- *  Method for resetting the EEPROM
- */
-void resetEeprom () {
-  EEPROM_Write(EEPROM_ADDRESS_ZERO, (byte) EEPROM_INITIALIZED_VAL);
-  for (int address = EEPROM_ADDRESS_ZERO + 1; address < EEPROM_SIZE; address++) {
-    EEPROM_Write(address, (byte) 0);
-  }
-}
-
-/*
  *  Method for getting current water temperature
  */
 void updateCurrentTemperature () {
@@ -169,41 +216,68 @@ void updateCurrentTemperature () {
   sleep(REQUEST_SLEEP_TIME);
   float temp = sensors.getTempCByIndex(0);
   if (temp != -127) {
-    currentTemp = temp;
+    currentTemp = (unsigned int) temp;
+  }
+  if (currentTemp >= targetTemp) {
+    reachedTemperature = true;
   }
 }
 
 /*
- *  Task for updating current temperature (local variable)
+ *  Method for updating current cook time
  */
-void UpdateCurrentTemp (void *pvParameters) {
+void updateCurrentTime () {
+  if ((reachedTemperature) && (timeSet)) {
+    if (currentTime == DEFAULT_VALUE) {
+      startTime = time(NULL);
+    }
+    currentTime = time(NULL) - startTime;
+  }
+}
+
+/*
+ *  Task for updating local variables
+ */
+void UpdateCurrent (void *pvParameters) {
   
   // Task loop
   for (;;) {
 
-    // Update method
+    // Update current temperature
     updateCurrentTemperature();
 
+    // Update current time
+    updateCurrentTime();
+
     // Task delay
-    sleep(DELAY_TASK_UPDATE_CURR_TEMP);
+    sleep(DELAY_TASK_UPDATE_CURR);
   }
 
 }
 
 /*
- *  Task for updating passed time (ROM)
+ *  Task for updating ROM
  */
-void UpdatePassedTime (void *pvParameters) {
+void UpdateRom (void *pvParameters) {
   
   // Task loop
   for (;;) {
 
-    // TODO: Implement this
+    if (currentTime != DEFAULT_VALUE) EEPROM_Write_Int (EEPROM_ADDRESS_PASSED_TIME, currentTime);
+    if (targetTime  != DEFAULT_VALUE) EEPROM_Write_Int (EEPROM_ADDRESS_DESIRED_TIME, targetTime);
+    if (targetTemp  != DEFAULT_VALUE) EEPROM_Write_Int (EEPROM_ADDRESS_DESIRED_TEMP, targetTemp);
 
     // Task delay
-    sleep(DELAY_TASK_UPDATE_PASSED_TIME);
+    sleep(DELAY_TASK_UPDATE_ROM);
   }
 
+}
+
+/*
+ *  Function for reading characteristic value as C++ string
+ */
+const char *readCharacteristic (BLECharacteristic *characteristic) {
+  return characteristic->getValue().c_str();
 }
 
 /*
@@ -214,7 +288,33 @@ void UpdateBleInputs (void *pvParameters) {
   // Task loop
   for (;;) {
 
-    // TODO: Implement this
+    // Clock
+    const char *val = readCharacteristic(pClockCharacteristic);
+    if (strcmp(val, INITIAL_CHARACTERISTIC_VALUE) != 0) {
+      mClock = atoi(val);
+      timeval tv;
+      tv.tv_sec = mClock;
+      settimeofday(&tv, NULL);
+      timeSet = true;
+    }
+
+    // Cooking time
+    val = readCharacteristic(pCookingTimeCharacteristic);
+    if (strcmp(val, INITIAL_CHARACTERISTIC_VALUE) != 0) {
+      targetTime = atoi(val);
+    }
+
+    // Cooking temperature
+    val = readCharacteristic(pCookingTemperatureCharacteristic);
+    if (strcmp(val, INITIAL_CHARACTERISTIC_VALUE) != 0) {
+      targetTemp = atoi(val);
+    }
+
+    // Enable
+    val = readCharacteristic(pEnableCharacteristic);
+    if (strcmp(val, INITIAL_CHARACTERISTIC_VALUE) != 0) {
+      enabled = (bool) atoi(val);
+    }
 
     // Task delay
     sleep(DELAY_TASK_UPDATE_BLE_INPUTS);
@@ -230,7 +330,19 @@ void UpdateBleOutputs (void *pvParameters) {
   // Task loop
   for (;;) {
 
-    // TODO: Implement this
+    char buffer [30];
+
+    // Current temperature
+    itoa(currentTemp, buffer, 10);
+    pCurrentTemperatureCharacteristic->setValue(buffer);
+
+    // Current temperature
+    itoa(currentTime, buffer, 10);
+    pTimePassedCharacteristic->setValue(buffer);
+
+    // Current temperature
+    itoa(heating, buffer, 10);
+    pHeatingEnabledCharacteristic->setValue(buffer);
 
     // Task delay
     sleep(DELAY_TASK_UPDATE_BLE_OUTPUTS);
@@ -269,6 +381,9 @@ extern "C" void app_main (void) {
   // Initialize EEPROM
   EEPROM.begin(EEPROM_SIZE);
 
+  // Initialize sensors
+  sensors.begin();
+
   // Check if equipment has been initialized
   unsigned int firstEepromVal = EEPROM_Read(EEPROM_ADDRESS_ZERO);
   if (firstEepromVal != EEPROM_INITIALIZED_VAL) {
@@ -276,15 +391,66 @@ extern "C" void app_main (void) {
     resetEeprom();
   }
 
-  // Pin TaskUpdateCurrentTemp to Core #0
+  // Initializing Bluetooth
+  initBle();
+
+  // Pin TaskUpdateCurrent to Core #0
   xTaskCreatePinnedToCore(
-                    UpdateCurrentTemp,          /* Task function. */
-                    "TaskUpdateCurrentTemp",    /* Name of task. */
-                    STACK_SIZE_DEFAULT,         /* Stack size of task */
-                    NO_PARAMETERS,              /* Parameters of the task */
-                    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
-                    &TaskUpdateCurrentTemp,     /* Task handle to keep track of created task */
-                    CORE_ZERO);                 /* Pin task to core 1 */
+    UpdateCurrent,              /* Task function. */
+    "TaskUpdateCurrent",        /* Name of task. */
+    STACK_SIZE_DEFAULT,         /* Stack size of task */
+    NO_PARAMETERS,              /* Parameters of the task */
+    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
+    &TaskUpdateCurrent,         /* Task handle to keep track of created task */
+    CORE_ZERO                   /* Pin task to core 1 */
+  );
   sleep(500);
 
+  // Pin TaskUpdateRom to Core #1
+  xTaskCreatePinnedToCore(
+    UpdateRom,                  /* Task function. */
+    "TaskUpdateRom",            /* Name of task. */
+    STACK_SIZE_DEFAULT,         /* Stack size of task */
+    NO_PARAMETERS,              /* Parameters of the task */
+    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
+    &TaskUpdateRom,             /* Task handle to keep track of created task */
+    CORE_ONE                    /* Pin task to core 1 */
+  );
+  sleep(500);
+
+  // Pin TaskUpdateBleInputs to Core #1
+  xTaskCreatePinnedToCore(
+    UpdateBleInputs,            /* Task function. */
+    "TaskUpdateBleInputs",      /* Name of task. */
+    STACK_SIZE_DEFAULT,         /* Stack size of task */
+    NO_PARAMETERS,              /* Parameters of the task */
+    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
+    &TaskUpdateBleInputs,       /* Task handle to keep track of created task */
+    CORE_ONE                    /* Pin task to core 1 */
+  );
+  sleep(500);
+
+  // Pin TaskUpdateBleOutputs to Core #0
+  xTaskCreatePinnedToCore(
+    UpdateBleOutputs,           /* Task function. */
+    "TaskUpdateBleOutputs",     /* Name of task. */
+    STACK_SIZE_DEFAULT,         /* Stack size of task */
+    NO_PARAMETERS,              /* Parameters of the task */
+    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
+    &TaskUpdateBleOutputs,      /* Task handle to keep track of created task */
+    CORE_ZERO                   /* Pin task to core 1 */
+  );
+  sleep(500);
+
+  // Pin TaskActions to Core #0
+  xTaskCreatePinnedToCore(
+    Actions,                    /* Task function. */
+    "TaskActions",              /* Name of task. */
+    STACK_SIZE_DEFAULT,         /* Stack size of task */
+    NO_PARAMETERS,              /* Parameters of the task */
+    PRIORITY_DEFAULT,           /* Priority of the task (the higher, the more important) */
+    &TaskActions,               /* Task handle to keep track of created task */
+    CORE_ZERO                   /* Pin task to core 1 */
+  );
+  sleep(500);
 }
